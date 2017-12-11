@@ -14,14 +14,14 @@ from matplotlib import pyplot, pylab
 from sklearn.preprocessing import scale
 from statsmodels.tsa.api import VAR
 from statsmodels.tsa.arima_model import ARIMA
-#import time
+import time
 
 #from methods import catch
 from statsmodels.tsa.stattools import acf
-#import seaborn as sns
+import seaborn as sns
 
 
-def catch(df,day=20160104,window=252):
+def catch(df,day=20160104,window=200):
     sp500_permno = sp500[(sp500[:,1]<=day)&(sp500[:,2]>=day),0]
     sp500_permno = [str(v) for v in sp500_permno]
     tt = (df.loc[:str(day),sp500_permno]).tail(window+1)
@@ -124,21 +124,17 @@ def dfm(X, m = 4, R = range(1,6)):
     ICp = np.concatenate((ICp1.reshape(L,1),ICp2.reshape(L,1)),axis=1) 
     best_dfm = results[max(flag1,flag2)]
     r = R[max(flag1,flag2)]
-    return best_dfm, ICp, r, results, [R[flag1],R[flag2]]
+    return best_dfm, ICp, r, results
 
-def forecast_VAR(F, lag=2):
+def forecast_VAR(F, lag=1):
     r = len(F[0])
-    if r > 1: 
-        model = VAR(F)
-        fit = model.fit(lag,trend='nc')   ##### should use trend='nc'!!!!!!!!
-        pred = np.zeros(r)
-        for i in range(lag):
-            pred = pred + np.dot(fit.params[i*r:(i+1)*r].T, F[-(i+1)])    
-    else:
-        model = ARIMA(F[:,0],(lag,0,0))
-        fit = model.fit()
-        pred = fit.forecast()[0][0]
+    model = VAR(F)
+    fit = model.fit(lag,trend='nc')   ##### should use trend='nc'!!!!!!!!
+    pred = np.zeros(r)
+    for i in range(lag):
+        pred = pred + np.dot(fit.params[i*r:(i+1)*r].T, F[-(i+1)])    
     return pred
+
 
 def forecast(X, pred_F, Lambda, D):
     T, N = X.shape 
@@ -148,24 +144,24 @@ def forecast(X, pred_F, Lambda, D):
         pred[i] = np.sum(Lambda[i]*pred_F) + np.sum(D[i]*X[-1:-1-m:-1,i])
     return pred
 
+
+
+
 def main():
-    Vol = pd.read_csv("../data/Vol.csv",index_col=0)
+    Vol = pd.read_csv("./Vol.csv",index_col=0)
     Vol.index = pd.to_datetime(Vol.index)
-    #RV5 = pd.read_csv("./RV5.csv",index_col=0)
-    #RV5.index = pd.to_datetime(RV5.index)
+    RV5 = pd.read_csv("./RV5.csv",index_col=0)
+    RV5.index = pd.to_datetime(RV5.index)
     global sp500
-    sp500 = np.loadtxt('../data/sp500.txt',dtype="int64")
-    uni_date = np.loadtxt("../data/uni_date.txt")
+    sp500 = np.loadtxt('./sp500.txt',dtype="int64")
+    uni_date = np.loadtxt("./uni_date.txt")
     
-    T = 1000
-    #start = 3527
+    T = 200
+    start = 3527
     #start = 5793
-    start = 2020
     
-    MSE = pd.DataFrame(index = Vol.index[start:start+T],columns=['DFM','ICp1','ICp2'])
-    ERROR = pd.DataFrame(index = Vol.index[start:start+T],columns=Vol.columns)
-    
-    #s = time.time()
+    MSE = pd.DataFrame(index = Vol.index[start:start+T],columns=['DFM'])
+    s = time.time()
     for t in range(T):
         #print(t)
         train, test =  catch(df=Vol,day=int(uni_date[t+start]))
@@ -174,7 +170,7 @@ def main():
         mean = X.mean(axis=0)
         std = X.std(axis=0)
         X = scale(X)
-        best_dfm, ICp, r, results, ICp_r = dfm(X, m=6) 
+        best_dfm, ICp, r, results = dfm(X, m=6) 
         
         F = best_dfm[0]
         Lambda = best_dfm[1]
@@ -191,10 +187,8 @@ def main():
         #plt.show()
         day = Vol.index[t+start]
         mse = np.mean((pred-test.values)**2)
-        MSE.loc[day] = [mse, ICp_r[0], ICp_r[1]]
-        ERROR.loc[day,train.columns] = pred-test.values
-    MSE.to_csv('/home/zwma/volforecast/DFM_MSE_2020.csv')
-    ERROR.to_csv('/home/zwma/volforecast/DFM_ERROR_2020.csv')
+        MSE.loc[day,'DFM'] = mse
+    MSE.to_csv('DFM_Vol_2016.csv')
     
     #e = time.time()
     #print(e-s)
@@ -203,5 +197,53 @@ if __name__ == '__main__':
     main()
     
 
+days = [20150624,20160112,20170323]
+
+for day in days:
     
+    print(str(day))
+    m = 6
+    train, test = catch(df=Vol,day=day)
+    X = train.values
+    mean = X.mean(axis=0)
+    std = X.std(axis=0)
+    X = scale(X)
+    best_dfm, ICp, r, results = dfm(X, m) 
+    resid = best_dfm[5]
+    ACF = np.array([acf(res) for res in resid])
+    ACF_mean = np.mean(ACF,axis=0)
+    plt.plot(ACF_mean,'o')
+    plt.axhline(0)
+    plt.title('Mean ACF of DFM residuals for '+str(day)+' m = '+str(m))
+    plt.show() 
+ 
     
+DFM_MSE_2020 = pd.read_csv("./DFM_MSE_2020.csv",index_col=0)    
+DFM_MSE_2020.index = pd.to_datetime(DFM_MSE_2020.index)
+DFM_MSE_3020 = pd.read_csv("./DFM_MSE_3020.csv",index_col=0)    
+DFM_MSE_3020.index = pd.to_datetime(DFM_MSE_3020.index)
+DFM_MSE_4020 = pd.read_csv("./DFM_MSE_4020.csv",index_col=0)    
+DFM_MSE_4020.index = pd.to_datetime(DFM_MSE_4020.index)
+DFM_MSE_5020 = pd.read_csv("./DFM_MSE_5020.csv",index_col=0)    
+DFM_MSE_5020.index = pd.to_datetime(DFM_MSE_5020.index)
+
+DFM_MSE = pd.concat([DFM_MSE_2020,DFM_MSE_3020])
+DFM_MSE = pd.concat([DFM_MSE,DFM_MSE_4020,DFM_MSE_5020])
+
+HAR_MSE_2020 = pd.read_csv("./HAR_MSE_2020.csv",index_col=0)    
+HAR_MSE_2020.index = pd.to_datetime(HAR_MSE_2020.index)
+HAR_MSE_4020 = pd.read_csv("./HAR_MSE_4020.csv",index_col=0)    
+HAR_MSE_4020.index = pd.to_datetime(HAR_MSE_4020.index)
+HAR_MSE = pd.concat([HAR_MSE_2020,HAR_MSE_4020])
+
+DFM_MSE['DFM'].plot(ylim = (0,1.4))
+HAR_MSE.plot(ylim=(0,1.4))
+
+RRMSE = pd.Series(np.sqrt(DFM_MSE['DFM'].values)/np.sqrt(HAR_MSE.values[:,0]), index = DFM_MSE.index)
+RRMSE.plot(lw=0.5)
+
+
+
+
+
+
